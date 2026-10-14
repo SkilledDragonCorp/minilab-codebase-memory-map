@@ -25,17 +25,15 @@ TARGET = ROOT / "vendor" / "codebase-memory-mcp" / "scripts" / "smoke-invariants
 INDEX_STATUS_HEADER = (
     "# ── Invariant: index_status reports a ready, non-empty project ─────────────\n"
 )
-NEXT_AFTER_INDEX_STATUS = "# ── #773: second in-process index must not SIGABRT ─────────────────────────\n"
+NEXT_AFTER_INDEX_STATUS = (
+    "# ── #773: second in-process index must not SIGABRT ─────────────────────────\n"
+)
 
-INJECTOR_START = (
-    "# ── Invariant: a hard crash on one file is SKIPPED and the rest is indexed ──\n"
-)
-INJECTOR_END = (
-    "# ── Invariant 8: clean exit on stdin EOF within a bounded wait (no hang) ────\n"
-)
+INJECTOR_START = "# ── Invariant: a hard crash on one file is SKIPPED and the rest is indexed ──\n"
+INJECTOR_END = "# ── Invariant 8: clean exit on stdin EOF within a bounded wait (no hang) ────\n"
 
 # Written verbatim into the vendor shell script (bash + embedded python).
-NEW_INDEX_STATUS = r'''# ── Invariant: index_status reports a ready, non-empty project ─────────────
+NEW_INDEX_STATUS = r"""# ── Invariant: index_status reports a ready, non-empty project ─────────────
 # Lab pin fix (SkilledDragon): flag form + --quiet; flexible ready/nodes match
 # for MCP --json envelopes (raw JSON argv is deprecated at this pin).
 inv_index_status_cli() {
@@ -55,11 +53,12 @@ print(max((int(x) for x in m), default=0))' 2>/dev/null)"
        [ "${nodes:-0}" -gt 0 ] 2>/dev/null; then
         pass "index-status (ready, non-empty, nodes=$nodes)"
     else
-        fail "index-status" "not ready/non-empty; out=[$(printf '%s' "$CLI_OUT" | tr '\n' ' ' | cut -c1-200)]"
+        fail "index-status" "not ready/non-empty; out=[$(printf '%s' \
+"$CLI_OUT" | tr '\n' ' ' | cut -c1-200)]"
     fi
 }
 
-'''
+"""
 
 INJECTOR_REPLACEMENT = """\
 # ── Injector skip-and-continue invariants OMITTED at this pin ──────────────
