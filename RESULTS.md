@@ -11,7 +11,7 @@ Pin note: after the verbatim `TEST_SEAMS=1` build, `scripts/apply-smoke-invarian
 | `uv sync --locked --group dev` | pass |
 | `uv run ruff check .` | pass |
 | `uv run ruff format --check .` | pass |
-| `uv run pytest -q` | 7 passed, 1 skipped (binary fixture awaits Linux build) |
+| `uv run pytest -q` | 9 passed, 1 skipped (binary fixture awaits Linux CI build) |
 | `python3 scripts/check-skills` | pass |
 | `python3 scripts/check-banned-phrases` | pass |
 | `python3 scripts/check-upstream-parity` | pass |
