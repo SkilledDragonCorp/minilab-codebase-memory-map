@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -21,6 +22,14 @@ class MapResult:
     stdout_search: str
 
 
+def project_name_from_path(path: Path | str) -> str:
+    """Mirror cbm_project_name_from_path used by smoke-invariants at the pin."""
+    s = re.sub(r"[^A-Za-z0-9._-]", "-", str(path))
+    s = re.sub(r"-{2,}", "-", s)
+    s = re.sub(r"\.{2,}", ".", s)
+    return s.strip("-").lstrip(".")
+
+
 def _run_cli(
     binary: Path, args: list[str], *, env: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
@@ -35,11 +44,39 @@ def _run_cli(
     )
 
 
-def map_fixture(fixture_root: Path, *, project: str = "tiny-fixture") -> MapResult:
+def _ensure_git_repo(fixture_root: Path) -> None:
+    """Smoke path expects a git repo; create a disposable one when missing."""
+    if (fixture_root / ".git").exists():
+        return
+    env = {**os.environ, "GIT_AUTHOR_NAME": "cbm-map", "GIT_AUTHOR_EMAIL": "lab@local"}
+    subprocess.run(["git", "init", "-q"], cwd=fixture_root, check=False, env=env)
+    subprocess.run(["git", "add", "-A"], cwd=fixture_root, check=False, env=env)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=lab@local",
+            "-c",
+            "user.name=cbm-map",
+            "commit",
+            "-q",
+            "-m",
+            "init",
+        ],
+        cwd=fixture_root,
+        check=False,
+        env=env,
+    )
+
+
+def map_fixture(fixture_root: Path, *, project: str | None = None) -> MapResult:
     """Index fixture_root and return measured node/file hits (lab numbers only)."""
     fixture_root = fixture_root.resolve()
     if not fixture_root.is_dir():
         raise FileNotFoundError(f"fixture not a directory: {fixture_root}")
+
+    _ensure_git_repo(fixture_root)
+    project_name = project or project_name_from_path(fixture_root)
 
     binary = resolve_binary()
     home = Path(tempfile.mkdtemp(prefix="cbm-map-home-"))
@@ -50,14 +87,13 @@ def map_fixture(fixture_root: Path, *, project: str = "tiny-fixture") -> MapResu
     # Keep the map local to this process home; do not point at third-party upload.
     env.pop("CBM_ALLOWED_ROOT", None)
 
+    # Pin CLI: index_repository has --repo-path only (no --project flag).
     index = _run_cli(
         binary,
         [
             "index_repository",
             "--repo-path",
             str(fixture_root),
-            "--project",
-            project,
             "--format",
             "json",
         ],
@@ -78,12 +114,15 @@ def map_fixture(fixture_root: Path, *, project: str = "tiny-fixture") -> MapResu
             f"list_projects failed ({listed.returncode}): {listed.stderr or listed.stdout}"
         )
 
+    # Prefer the name CBM actually registered when path-derived name mismatches.
+    resolved = _resolve_project_name(listed.stdout, project_name)
+
     search = _run_cli(
         binary,
         [
             "search_graph",
             "--project",
-            project,
+            resolved,
             "--query",
             "greet",
             "--limit",
@@ -98,10 +137,10 @@ def map_fixture(fixture_root: Path, *, project: str = "tiny-fixture") -> MapResu
             f"search_graph failed ({search.returncode}): {search.stderr or search.stdout}"
         )
 
-    node_count = _extract_node_count(listed.stdout, project)
+    node_count = _extract_node_count(listed.stdout, resolved)
     hit_files = _extract_hit_files(search.stdout)
     return MapResult(
-        project=project,
+        project=resolved,
         node_count=node_count,
         hit_files=hit_files,
         stdout_list=listed.stdout,
@@ -109,14 +148,35 @@ def map_fixture(fixture_root: Path, *, project: str = "tiny-fixture") -> MapResu
     )
 
 
-def _extract_node_count(list_stdout: str, project: str) -> int:
+def _projects_from_list(list_stdout: str) -> list[dict]:
     data = json.loads(list_stdout)
-    projects = data.get("projects") or data.get("result", {}).get("projects") or []
     if isinstance(data, list):
-        projects = data
-    for item in projects:
-        if not isinstance(item, dict):
-            continue
+        return [x for x in data if isinstance(x, dict)]
+    projects = data.get("projects") or data.get("result", {}).get("projects") or []
+    return [x for x in projects if isinstance(x, dict)]
+
+
+def _resolve_project_name(list_stdout: str, preferred: str) -> str:
+    projects = _projects_from_list(list_stdout)
+    names = [
+        str(item.get("name") or item.get("project") or "")
+        for item in projects
+        if (item.get("name") or item.get("project"))
+    ]
+    if preferred in names:
+        return preferred
+    for name in names:
+        if preferred in name or name.endswith(preferred.split("-")[-1]):
+            return name
+    if len(names) == 1:
+        return names[0]
+    if names:
+        return names[0]
+    return preferred
+
+
+def _extract_node_count(list_stdout: str, project: str) -> int:
+    for item in _projects_from_list(list_stdout):
         name = item.get("name") or item.get("project") or ""
         if name != project and project not in str(name):
             continue
@@ -126,7 +186,11 @@ def _extract_node_count(list_stdout: str, project: str) -> int:
                 return stats[key]
         if isinstance(item.get("nodes"), int):
             return item["nodes"]
-    # Fallback: count distinct file path mentions in the JSON blob.
+    # Fallback: parse nodes from index/list JSON text (smoke-invariants style).
+    cleaned = list_stdout.replace("\\", "").replace('"', "")
+    matches = [int(x) for x in re.findall(r"nodes\s*[:=]\s*(\d+)", cleaned)]
+    if matches and max(matches) > 0:
+        return max(matches)
     text = list_stdout.lower()
     if project.lower() in text:
         return max(text.count(".py"), 1)
@@ -138,7 +202,6 @@ def _extract_hit_files(search_stdout: str) -> list[str]:
     try:
         data = json.loads(search_stdout)
     except json.JSONDecodeError:
-        # Compact-tree / text mode — collect .py path-looking tokens.
         for token in search_stdout.replace(",", " ").split():
             if token.endswith(".py"):
                 hits.append(token.strip("\"'"))

@@ -59,3 +59,4 @@ tools/gitleaks
 # Local CBM index / graph artifacts under fixtures
 tests/fixtures/**/.codebase-memory/
 tests/fixtures/**/graph.db*
+tests/fixtures/**/.git/

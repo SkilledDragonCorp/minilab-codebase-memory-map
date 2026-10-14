@@ -22,7 +22,11 @@ def main(argv: list[str] | None = None) -> int:
         default=str(DEFAULT_FIXTURE),
         help="Path to fixture repository root",
     )
-    parser.add_argument("--project", default="tiny-fixture", help="CBM project name")
+    parser.add_argument(
+        "--project",
+        default=None,
+        help="Optional CBM project name override (default: derived from fixture path)",
+    )
     parser.add_argument("--json", action="store_true", help="Print JSON report")
     args = parser.parse_args(argv)
 

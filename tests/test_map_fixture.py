@@ -20,7 +20,13 @@ def test_map_fixture_has_graph_nodes_for_fixture_files() -> None:
             f"binary unavailable at {DEFAULT_BIN} (pin {PIN}); "
             "run bash scripts/upstream-cbm.sh before this test"
         )
-    result = map_fixture(FIXTURE, project="tiny-fixture")
+    result = map_fixture(FIXTURE)
     assert result.node_count >= 1
     blob = " ".join(result.hit_files) + result.stdout_search + result.stdout_list
     assert "hello.py" in blob or "mathy.py" in blob
+
+
+def test_project_name_from_path_mirrors_smoke() -> None:
+    from cbm_map.map_fixture import project_name_from_path
+
+    assert project_name_from_path("/tmp/foo/bar") == "tmp-foo-bar"
