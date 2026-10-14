@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--project",
         default=None,
-        help="Optional CBM project name override (default: derived from fixture path)",
+        help="Optional CBM project name override (default: tiny-fixture)",
     )
     parser.add_argument("--json", action="store_true", help="Print JSON report")
     args = parser.parse_args(argv)

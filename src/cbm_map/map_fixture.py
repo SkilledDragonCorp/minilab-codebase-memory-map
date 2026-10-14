@@ -23,13 +23,9 @@ class MapResult:
     stdout_search: str
 
 
-def project_name_from_path(path: Path | str) -> str:
-    """Mirror smoke-invariants / cbm_project_name_from_path ASCII sanitization.
-
-    Sanitizes the path string as given (no resolve) so macOS /tmp → /private/tmp
-    does not change the derived name versus Linux CI.
-    """
-    s = re.sub(r"[^A-Za-z0-9._-]", "-", str(path))
+def project_name_from_path(path: str) -> str:
+    """Mirror smoke-invariants PROJ_NAME sanitization (ASCII path form)."""
+    s = re.sub(r"[^A-Za-z0-9._-]", "-", path)
     s = re.sub(r"-{2,}", "-", s)
     s = re.sub(r"\.{2,}", ".", s)
     return s.strip("-").lstrip(".") or "root"
@@ -38,7 +34,7 @@ def project_name_from_path(path: Path | str) -> str:
 def _run_cli(
     binary: Path, args: list[str], *, env: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
-    # Global --json before the tool (not --format after). Matches pin CLI.
+    # Match pin smoke-invariants: `cli --quiet --json <tool> …`
     cmd = [str(binary), "cli", "--quiet", "--json", *args]
     return subprocess.run(
         cmd,
@@ -51,7 +47,7 @@ def _run_cli(
 
 
 def _prepare_work_repo(fixture_root: Path) -> Path:
-    """Copy fixture to a scratch git repo (same shape as smoke make_test_repo)."""
+    """Copy fixture into a scratch git repo (smoke make_test_repo shape)."""
     scratch = Path(tempfile.mkdtemp(prefix="cbm-map-repo-"))
     repo = scratch / "repo"
     shutil.copytree(fixture_root, repo)
@@ -76,7 +72,7 @@ def _prepare_work_repo(fixture_root: Path) -> Path:
     return repo.resolve()
 
 
-def map_fixture(fixture_root: Path, *, project: str = "tiny-fixture") -> MapResult:
+def map_fixture(fixture_root: Path, *, project: str | None = None) -> MapResult:
     """Index fixture_root and return measured node/file hits (lab numbers only)."""
     fixture_root = fixture_root.resolve()
     if not fixture_root.is_dir():
@@ -88,24 +84,15 @@ def map_fixture(fixture_root: Path, *, project: str = "tiny-fixture") -> MapResu
     env["HOME"] = str(home)
     env["DISABLE_TELEMETRY"] = "1"
     env["DO_NOT_TRACK"] = "1"
-    # Keep the map local to this process home; do not point at third-party upload.
     env.pop("CBM_ALLOWED_ROOT", None)
 
     work_repo = _prepare_work_repo(fixture_root)
+    # Short stable override via tool `name` (schema-supported at pin); else path-derived.
+    proj = project or "tiny-fixture"
 
-    # Pin CLI: index_repository accepts --repo-path + optional --name (no --project,
-    # no --format). Global --json is already on the cli prefix.
-    index = _run_cli(
-        binary,
-        [
-            "index_repository",
-            "--repo-path",
-            str(work_repo),
-            "--name",
-            project,
-        ],
-        env=env,
-    )
+    # smoke-invariants inv_index_cli: JSON args with repo_path (+ optional name).
+    index_payload = {"repo_path": str(work_repo), "name": proj}
+    index = _run_cli(binary, ["index_repository", json.dumps(index_payload)], env=env)
     if index.returncode != 0:
         raise RuntimeError(
             f"index_repository failed ({index.returncode}): {index.stderr or index.stdout}"
@@ -113,7 +100,7 @@ def map_fixture(fixture_root: Path, *, project: str = "tiny-fixture") -> MapResu
 
     listed = _run_cli(
         binary,
-        ["list_projects", "--detail", "stats"],
+        ["list_projects", json.dumps({"format": "json", "detail": "stats"})],
         env=env,
     )
     if listed.returncode != 0:
@@ -125,12 +112,14 @@ def map_fixture(fixture_root: Path, *, project: str = "tiny-fixture") -> MapResu
         binary,
         [
             "search_graph",
-            "--project",
-            project,
-            "--query",
-            "greet",
-            "--limit",
-            "50",
+            json.dumps(
+                {
+                    "project": proj,
+                    "name_pattern": ".*greet.*",
+                    "format": "json",
+                    "limit": 50,
+                }
+            ),
         ],
         env=env,
     )
@@ -139,19 +128,15 @@ def map_fixture(fixture_root: Path, *, project: str = "tiny-fixture") -> MapResu
             f"search_graph failed ({search.returncode}): {search.stderr or search.stdout}"
         )
 
-    status = _run_cli(
-        binary,
-        ["index_status", "--project", project],
-        env=env,
-    )
+    status = _run_cli(binary, ["index_status", "--project", proj], env=env)
     node_count = _extract_node_count(
         listed.stdout,
-        project,
+        proj,
         extra_blobs=(index.stdout, status.stdout, status.stderr),
     )
     hit_files = _extract_hit_files(search.stdout)
     return MapResult(
-        project=project,
+        project=proj,
         node_count=node_count,
         hit_files=hit_files,
         stdout_list=listed.stdout,
@@ -201,10 +186,10 @@ def _extract_node_count(
         raw = data.get("projects")
         if isinstance(raw, list):
             projects = raw
-        else:
-            nested = data.get("result")
-            if isinstance(nested, dict) and isinstance(nested.get("projects"), list):
-                projects = nested["projects"]
+        elif isinstance(data.get("result"), dict):
+            inner = data["result"].get("projects")
+            if isinstance(inner, list):
+                projects = inner
     elif isinstance(data, list):
         projects = data
 
@@ -245,16 +230,22 @@ def _extract_hit_files(search_stdout: str) -> list[str]:
     def walk(obj: object) -> None:
         if isinstance(obj, dict):
             for key, value in obj.items():
-                if key in {"path", "file", "file_path", "filepath", "uri", "name"} and isinstance(
-                    value, str
-                ):
+                if key in {
+                    "path",
+                    "file",
+                    "file_path",
+                    "filepath",
+                    "uri",
+                    "name",
+                    "qn",
+                } and isinstance(value, str):
+                    low = value.lower()
                     if (
                         value.endswith(".py")
                         or "/src/" in value
-                        or "\\src\\" in value
-                        or "hello" in value
-                        or "mathy" in value
-                        or "greet" in value
+                        or "hello" in low
+                        or "mathy" in low
+                        or "greet" in low
                     ):
                         hits.append(value)
                 else:
@@ -265,8 +256,9 @@ def _extract_hit_files(search_stdout: str) -> list[str]:
 
     walk(data)
     if not hits:
-        blob = json.dumps(data) if not isinstance(data, str) else str(data)
-        blob += search_stdout
+        blob = search_stdout
+        if not isinstance(data, str):
+            blob += json.dumps(data)
         for needle in ("hello.py", "mathy.py", "src/hello.py", "pkg/mathy.py", "greet"):
             if needle in blob:
                 hits.append(needle)
