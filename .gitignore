@@ -1,0 +1,61 @@
+# Secrets and local env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.crt
+*.cer
+*.pfx
+credentials.json
+secrets/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.uv-cache/
+dist/
+build/
+out/
+coverage/
+*.lcov
+coverage.xml
+.coverage
+
+# Vendored upstream (script-cloned; pin asserted in scripts/vendor-upstream.sh)
+vendor/
+
+# Caches and logs
+.cache/
+.tmp/
+tmp/
+logs/
+*.log
+reports/*.log
+reports/map-fixture.json
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Forbidden skill mirrors (canonical path only)
+.agents/
+.cursor/skills/
+
+# Gitleaks local cache
+.gitleaks/
+tools/gitleaks
+
+# Local CBM index / graph artifacts under fixtures
+tests/fixtures/**/.codebase-memory/
+tests/fixtures/**/graph.db*

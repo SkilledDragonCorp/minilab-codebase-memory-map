@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Assert scripts/upstream-cbm.sh embeds the pin smoke-unix commands."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "scripts" / "upstream-cbm.sh"
+PIN = "49424722576191a1309d27ec7279c8676d0b1ec2"
+
+REQUIRED_SNIPPETS = (
+    "sudo apt-get update && sudo apt-get install -y zlib1g-dev python3 git",
+    "scripts/build.sh CC=gcc CXX=g++ TEST_SEAMS=1",
+    "chmod +x scripts/smoke-invariants.sh",
+    "scripts/smoke-invariants.sh build/c/codebase-memory-mcp",
+    PIN,
+    "494247225761",
+)
+
+
+def main() -> int:
+    if not SCRIPT.is_file():
+        print(f"missing {SCRIPT}", file=sys.stderr)
+        return 1
+    text = SCRIPT.read_text(encoding="utf-8")
+    missing = [s for s in REQUIRED_SNIPPETS if s not in text]
+    if missing:
+        print("upstream-parity missing snippets:", file=sys.stderr)
+        for item in missing:
+            print(f"  - {item!r}", file=sys.stderr)
+        return 1
+    # Allow mentioning the ban in comments; fail if an install.sh invocation appears.
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        if "install.sh" in stripped or "release-binary" in stripped:
+            print(
+                f"upstream-cbm.sh must not invoke install.sh/release-binary: {stripped}",
+                file=sys.stderr,
+            )
+            return 1
+        if "curl " in stripped and "install" in stripped.lower():
+            print(f"upstream-cbm.sh must not curl-install: {stripped}", file=sys.stderr)
+            return 1
+    print("upstream-parity OK")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
