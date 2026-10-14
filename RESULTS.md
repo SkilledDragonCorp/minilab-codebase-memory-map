@@ -23,3 +23,13 @@ Pin note: after the verbatim `TEST_SEAMS=1` build, `scripts/apply-smoke-invarian
 `vendor/codebase-memory-mcp` @ `49424722576191a1309d27ec7279c8676d0b1ec2` (short `494247225761`).
 
 Vendor token multipliers remain **ellos reportan** / **según ellos** — not lab measurements.
+
+## CI
+
+Green ship run: https://github.com/SkilledDragonCorp/minilab-codebase-memory-map/actions/runs/38519292875 (SHA `f5f4075696e2a034501708a0e6d954198d1c6279`).
+
+## CI (green)
+
+- Run: https://github.com/SkilledDragonCorp/minilab-codebase-memory-map/actions/runs/38518919231
+- SHA: `5cd0167` — jobs `lab`, `upstream` (build + smoke-invariants + fixture map), `security` all pass.
+
