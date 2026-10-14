@@ -9,7 +9,8 @@ Python (uv/pytest) minilab: pin [DeusData/codebase-memory-mcp](https://github.co
 | Piece | Purpose |
 | --- | --- |
 | `scripts/vendor-upstream.sh` | Clone + pin `vendor/codebase-memory-mcp` (gitignored) |
-| `scripts/upstream-cbm.sh` | Verbatim smoke-unix source build + smoke-invariants |
+| `scripts/upstream-cbm.sh` | Verbatim smoke-unix source build + pin-adapted smoke-invariants |
+| `scripts/apply-smoke-invariants-pin-fix.py` | Flag-form `index_status`; omit daemon-broken injector vacuity guards |
 | `uv run cbm-map` | Index the tiny fixture; print measured node/hit counts |
 | `.claude/skills/codebase-memory-map/` | Skill: local map before long-horizon Argon; hedge vendor claims |
 | CI | Jobs `lab`, `upstream`, `security` |

@@ -38,6 +38,9 @@ if [[ "$(uname -s)" == "Linux" ]]; then
   sudo apt-get update && sudo apt-get install -y zlib1g-dev python3 git
 fi
 scripts/build.sh CC=gcc CXX=g++ TEST_SEAMS=1
+# Pin CLI is daemon-side; adapt smoke-invariants index_status flags and omit
+# vacuous injector guards (not run by gating pr-smoke). See apply script.
+python3 "$ROOT/scripts/apply-smoke-invariants-pin-fix.py"
 chmod +x scripts/smoke-invariants.sh
 scripts/smoke-invariants.sh build/c/codebase-memory-mcp
 
